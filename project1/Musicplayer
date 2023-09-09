@@ -1,0 +1,191 @@
+import pygame
+from tkinter import *
+from tkinter import ttk, filedialog
+import os
+from comtypes import CLSCTX_ALL
+from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import random
+
+class MusicPlayer:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Music Player")
+        self.root.geometry("800x600")
+        
+
+        pygame.mixer.init()
+
+        self.track = StringVar()
+        self.status = StringVar()
+        self.paused = False
+        self.current_song = None
+        self.song_length = 0
+        self.current_time = StringVar()
+        self.progress = DoubleVar(value=0.0)
+        
+        
+        self.header_frame = Frame(root, bg="#455A64", height=100)
+        self.header_frame.pack(fill=X)
+        self.logo = Label(self.header_frame, text="Music Player", font=("Arial", 30), fg="white", bg="#455A64", pady=25)
+        root.attributes('-alpha', 0.9)
+        self.logo.pack(pady=(30, 0))
+        
+
+        self.control_frame = Frame(root, height=100)
+        self.control_frame.pack(fill=X, pady=20)
+        
+        
+        style = ttk.Style()
+        style.configure('Custom.TButton', background='#53868B', foreground='#53868B', font=('Arial', 12), padding=(10, 10))
+        
+
+        self.play_button = ttk.Button(self.control_frame, text="Play", command=self.play_pause, style='Custom.TButton')
+        self.play_button.pack(side=LEFT, padx=10)
+        self.prev_button = ttk.Button(self.control_frame, text="Previous", command=self.play_previous, style='Custom.TButton')
+        self.prev_button.pack(side=LEFT, padx=10)
+        self.stop_button = ttk.Button(self.control_frame, text="Stop", command=self.stopsong, style='Custom.TButton')
+        self.stop_button.pack(side=LEFT, padx=10)
+        self.next_button = ttk.Button(self.control_frame, text="Next", command=self.play_next, style='Custom.TButton')
+        self.next_button.pack(side=LEFT, padx=10)
+        self.add_button = ttk.Button(self.control_frame, text="Add Songs", command=self.add_songs, style='Custom.TButton')
+        self.add_button.pack(side=LEFT, padx=10)
+
+
+        self.playlist_frame = Frame(root, bg="#455A64")
+        self.playlist_frame.pack(fill=BOTH, expand=YES)
+        self.playlist = Listbox(self.playlist_frame, font=("Arial", 14), bg="white", fg="black")
+        self.playlist.pack(fill=BOTH, expand=YES)
+        self.playlist.bind("<Double-1>", self.play_selected_song)
+
+
+        self.progress_bar = ttk.Progressbar(root, mode="determinate", length=700, variable=self.progress)
+        self.progress_bar.pack(pady=(10, 0))
+        
+        self.visualizer_frame = Frame(root, bg="#455A64", height=200)
+        self.visualizer_frame.pack(fill=X)
+        self.visualizer_label = Label(self.visualizer_frame, text="Visualizer", font=("Arial", 20), fg="white", bg="#455A64")
+        self.visualizer_label.pack(pady=(10, 0))
+        
+        self.figure, self.ax = plt.subplots(figsize=(6, 1), dpi=50)
+        self.canvas = FigureCanvasTkAgg(self.figure, master=self.visualizer_frame)
+        self.canvas.draw()
+        self.canvas.get_tk_widget().pack(fill=BOTH, expand=YES)
+       
+
+        self.load_songs()
+        self.style = ttk.Style()
+        self.style.configure('TScale', sliderthickness=20, troughcolor='#FF5722', background='#212121', troughrelief='flat')
+
+        self.update_progress()
+        self.update_visualizer()
+
+    def load_songs(self):
+        music_directory = "D:/Musicplayer"
+        os.chdir(music_directory)
+        songtracks = os.listdir()
+        for track in songtracks:
+            self.playlist.insert(END, track)
+
+
+    def play_pause(self):
+        if self.current_song:
+            if self.paused:
+                pygame.mixer.music.unpause()
+                self.paused = False
+            else:
+                pygame.mixer.music.pause()
+                self.paused = True
+
+
+    def stopsong(self):
+        self.track.set("No Track Selected")
+        self.status.set("Status: Stopped")
+        pygame.mixer.music.stop()
+
+
+    def set_volume(self, val):
+        volume = int(val)
+        devices = AudioUtilities.GetSpeakers()
+        interface = devices.Activate(
+        IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+        volume_range = interface.GetVolumeRange()
+        new_volume = volume_range[0] + (volume / 100) * (volume_range[1] - volume_range[0])
+        interface.SetMasterVolumeLevel(new_volume, None)
+
+
+    def play_selected_song(self, event):
+        index = self.playlist.curselection()
+        if index:
+            song_name = self.playlist.get(index)
+            song_path = os.path.join("D:/musicplayer", song_name)
+            
+            self.current_song = song_path
+            self.paused = False
+            self.track.set("Now Playing: " + song_name)
+            self.status.set("Status: Playing")
+            pygame.mixer.music.load(song_path)
+            pygame.mixer.music.play()
+            self.song_length = pygame.mixer.Sound(song_path).get_length()
+            self.progress.set(0.0)
+            self.current_time.set("0:00")
+
+
+    def update_progress(self):
+        if pygame.mixer.music.get_busy():
+            current_position = pygame.mixer.music.get_pos() / 1000
+            self.progress.set((current_position / self.song_length) * 100)
+            minutes = int(current_position // 60)
+            seconds = int(current_position % 60)
+            self.current_time.set(f"{minutes}:{seconds:02d}")
+            self.root.after(100, self.update_progress)
+        else:
+            self.progress.set(0.0)
+            self.current_time.set("0:00")
+
+    def play_next(self):
+        current_index = self.playlist.curselection()
+        if current_index:
+            next_index = current_index[0] + 1
+            if next_index < self.playlist.size():
+                self.playlist.selection_clear(current_index)
+                self.playlist.selection_set(next_index)
+                self.playlist.activate(next_index)
+                self.play_selected_song(None)
+
+    def play_previous(self):
+        current_index = self.playlist.curselection()
+        if current_index:
+            prev_index = current_index[0] - 1
+            if prev_index >= 0:
+                self.playlist.selection_clear(current_index)
+                self.playlist.selection_set(prev_index)
+                self.playlist.activate(prev_index)
+                self.play_selected_song(None)
+
+    def add_songs(self):
+        filetypes = (
+            ("Audio Files", "*.mp3"),
+            ("All Files", "*.*")
+        )
+        songs = filedialog.askopenfilenames(filetypes=filetypes)
+        
+        for song in songs:
+            song_name = os.path.basename(song)
+            if song_name not in self.playlist.get(0, END):
+                self.playlist.insert(END, song_name)
+
+
+    def update_visualizer(self):
+        data = [random.random() for _ in range(10)]
+        self.ax.clear()
+        self.ax.bar(range(len(data)), data)
+        self.canvas.draw()
+        self.root.after(100, self.update_visualizer)
+
+
+if __name__ == "__main__":
+    root = Tk()
+    musicplayer = MusicPlayer(root)
+    root.mainloop()
